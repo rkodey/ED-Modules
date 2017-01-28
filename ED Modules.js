@@ -298,7 +298,7 @@ function getFromStorage(newmod) {
 
 function getObj(line, flag) {
   var obj = eval('('+line+')');
-  if(flag || line.match(/xxxcorros/i)) dump(obj, obj.event);  // debugging
+  if(flag || line.match(/xxxdebug/i)) dump(obj, obj.event);  // debugging
   return obj;
 }
 
@@ -341,7 +341,14 @@ function readFile(file) {
     var line      = f.ReadLine();
     var ship      = SHIPS[CURSHIP] = (SHIPS[CURSHIP] || {});
 
-    // Handle new ships.  Both purchased ships, and swapping of ships.
+    // Sell a ship
+    if(line.match(/"event":"(ShipyardSell)/i)) {
+      var obj     = getObj(line, 0);
+      var oldship = getShipName(obj.ShipType, obj.SellShipID);
+      delete SHIPS[oldship];
+    }
+
+    else  // Handle new ships.  Both purchased ships, and swapping of ships.
     if(line.match(/"event":"(Shipyard)/i)) {
       var obj     = getObj(line, 0);
 
@@ -517,4 +524,4 @@ OUT.WriteLine('\
 ');
 OUT.Close();
 
-print('\nWrote: Ships.html\n');
+WScript.echo("\nDone.\nWrote: Ships.html\n");
