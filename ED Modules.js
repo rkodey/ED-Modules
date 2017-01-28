@@ -12,7 +12,8 @@
 ////////////////////
 ////////// Condifugation Stuff
 
-// var SHIP_FILTER = /Anaconda|Asp|Cutter/i;    // Uncomment this line, and use a regex to filter the ship output
+var SHIP_FILTER = 0
+// var SHIP_FILTER = /Anaconda|Asp|Cutter/i;
 
 ////////////////////
 ////////////////////
@@ -88,7 +89,7 @@ var SLOT_FROM_MOD = {
 }
 
 var TYPES = {
-  'Corrosion Resistant Cargo Rack'  : 'Corrosive Cargo'
+  'Corrosion Resistant Cargo Rack'  : 'Anti-Corrosive Cargo'
  ,'Planetary Vehicle Hangar'        : 'SRV Hangar'
 }
 
@@ -240,7 +241,7 @@ function writeShips() {
   var head;
   OUT.WriteLine('<tr><th></th>');
   while(head  = headers.shift()) {
-    if(getSortedKeys(SHIPS[head]).length && SHIP_FILTER && head.match(SHIP_FILTER)) {
+    if(getSortedKeys(SHIPS[head]).length && (!SHIP_FILTER || head.match(SHIP_FILTER))) {
       OUT.WriteLine('<th class="'+(head==CURSHIP?'current-th':'')+'">'+head+'</th>');
     }
   }
@@ -257,7 +258,7 @@ function writeShips() {
     var ships = getSortedKeys(SHIPS);
     var ship;
     while(ship = ships.shift()) {
-      if(getSortedKeys(SHIPS[ship]).length && SHIP_FILTER && ship.match(SHIP_FILTER)) {
+      if(getSortedKeys(SHIPS[ship]).length && (!SHIP_FILTER || ship.match(SHIP_FILTER))) {
         writeSlot(ship, slot, SHIPS[ship], OUT);
       }
     }
