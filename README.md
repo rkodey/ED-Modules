@@ -6,6 +6,6 @@ Kudos to msarilar for his excellent tool EDEngineer.  That inspired me to dig in
 https://github.com/msarilar/EDEngineer
 
 <br>
-Example screenshot:
+Example of the output html:
 
 ![Alt text](/Screenshot.png?raw=true "Optional Title")
