@@ -8,15 +8,15 @@
 ////////// Usage:  cscript.exe "ED Modules.js"
 
 
-var CMDLINE   = 1;
-if(WScript.FullName.match(/wscript\.exe/i)) {
-  WScript.echo("To see some additional output, run this script at the command line, using cscript.exe.");
-  CMDLINE     = 0;
-}
+////////////////////
+////////////////////
+////////// Condifugation Stuff
 
-print("IMPORTANT!!  This script will create/overwrite a file 'Ships.html' in the current directory.");
-print("To prove you know what you're doing, you must edit the file and comment out the 'Quit' call on line 10.");
-WScript.Quit();
+// var SHIP_FILTER = /Anaconda|Asp|Cutter/i;    // Uncomment this line, and use a regex to filter the ship output
+
+////////////////////
+////////////////////
+
 
 
 var FSO       = new ActiveXObject("Scripting.FileSystemObject");
@@ -31,6 +31,12 @@ var SHIPS     = {};
 var ALLSLOTS  = {};
 var STORAGE   = [];
 var CURSHIP   = '';
+
+var CMDLINE   = 1;
+if(WScript.FullName.match(/wscript\.exe/i)) {
+  WScript.echo("To see some additional output, run this script at the command line, using cscript.exe.");
+  CMDLINE     = 0;
+}
 
 
 ////////////////////
@@ -234,9 +240,8 @@ function writeShips() {
   var head;
   OUT.WriteLine('<tr><th></th>');
   while(head  = headers.shift()) {
-    if(getSortedKeys(SHIPS[head]).length) {
+    if(getSortedKeys(SHIPS[head]).length && SHIP_FILTER && head.match(SHIP_FILTER)) {
       OUT.WriteLine('<th class="'+(head==CURSHIP?'current-th':'')+'">'+head+'</th>');
-      
     }
   }
   OUT.WriteLine('<th>Storage</th></tr>');
@@ -252,7 +257,7 @@ function writeShips() {
     var ships = getSortedKeys(SHIPS);
     var ship;
     while(ship = ships.shift()) {
-      if(getSortedKeys(SHIPS[ship]).length) {
+      if(getSortedKeys(SHIPS[ship]).length && SHIP_FILTER && ship.match(SHIP_FILTER)) {
         writeSlot(ship, slot, SHIPS[ship], OUT);
       }
     }
