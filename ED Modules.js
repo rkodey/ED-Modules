@@ -30,6 +30,7 @@ var APPDATA   = ENV("APPDATA");
 var MATERIALS = {};
 var SHIPS     = {};
 var ALLSLOTS  = {};
+var MODMAP    = {};
 var STORAGE   = [];
 var CURSHIP   = '';
 
@@ -122,14 +123,12 @@ function getSlotFromEnh(oEnh, ship) {
       if(ship[slot].Type == oEnh.Mod) return slot;
     }
   }
-  // dump(ship[slot], slot);
 }
 
 function getItemDetails(src) {
   src = (src||'').replace('dronecontrol_collection',  'dronecontrolcollection');  // They put in an extra underscore for drones!  Ugh.
   var aParts    = src.split('_');
-  var obj       = { Size:aParts[2], Class:aParts[3] };
-  // if(aParts.length > 5) dump(aParts, src);
+  var obj       = { Type:aParts[1], Size:aParts[2], Class:aParts[3] };
   return obj;
 }
 
@@ -154,7 +153,6 @@ function getSlotAndSize(src) {
   slot = slot.replace('ShieldBooster',    'Shield Booster');
   aParts[0]     = slot;
   var obj       = { Slot:aParts[0], Size:aParts[1] };
-  // dump(obj, src);
   return obj;
 }
 
@@ -164,7 +162,6 @@ function getEnh(enh) {
   enh         = enh.replace('HighFrequency',  'Charge');
   obj.Slot    = enh;
   obj         = { Mod:obj.Slot, Enh:obj.Size };
-  // dump(obj, src);
   return obj;
 }
 
@@ -175,9 +172,9 @@ function getModClassSizeEnh(obj) {
   return ModClass + ModSize + enh;
 }
 
-function checkSlotType(slot, type) {
+function checkSlotModType(slot, modtype) {
   if(slot) {  // Ignore selling an empty slot
-    if(type == slot.Type) {
+    if(slot.ModType == modtype) {
       return true;
     }
     else {
@@ -216,8 +213,6 @@ function writeSlot(label, slot, oShip, file) {
   if(obj) {
     var size      = SIZES[obj.Size] || '';
     var Type      = getType(obj.Type);
-    // var oEnh      = oShip[' '+obj.Type];
-
     var enhclass  = ''
     if(obj.Enh) {
       enhclass    = 'enhance';
@@ -285,15 +280,43 @@ function dump(obj, label) { // For debugging
 
 ////////////////////
 ////////// Mechanical functions that manage Storage, Modules, etc.
-function getFromStorage(newmod) {
+function fixModType(obj) {
+  // Mass module storage doesn't include Localised names.  Ugh.  So, let's keep a map of known names as we encounter them.
+  if(obj) {
+    if(obj.ModType && obj.Type) {
+      MODMAP[obj.ModType] = obj.Type;
+    }
+    else if(obj.ModType && !obj.Type) {
+      obj.Type  = MODMAP[obj.ModType] || '';
+    }
+  }
+  return obj;
+}
+
+function moveFromStorage(newmod) {
   for(var stor in STORAGE) {  // look for the module in storage
-    var stored  = STORAGE[stor];
+    var stored  = fixModType(STORAGE[stor]);
+    // This looks for the first closest match, because there's no way I can see it identify individual Storage slots
     if(stored.Type == newmod.Type && stored.ModSize == newmod.ModSize && stored.ModClass == newmod.ModClass) {
       STORAGE.splice(stor, 1);
       return stored;
     }
   }
   return newmod;
+}
+
+function moveToStorage(ship, obj, name, label) {
+  var newmod  = getNewModule(obj, name);  // Create our starting Module, like above
+
+  // Since the Journal might Store a Module that we've never seen, save the starting Module into the Ship since the basic info is all there
+  ship[newmod.Slot] = ship[newmod.Slot] || newmod;
+
+  // Then, we can safely store the Module from the Ship.
+  if(checkSlotModType(ship[newmod.Slot], newmod.ModType)) {
+    STORAGE.push(ship[newmod.Slot]);
+    writeSlot(label, newmod.Slot, ship);
+    delete ship[newmod.Slot];
+  }
 }
 
 function getObj(line, flag) {
@@ -305,16 +328,16 @@ function getObj(line, flag) {
 function getNewModule(obj, item, slot) {
   var oItem   = getItemDetails(obj[item]);
   var oSlot   = getSlotAndSize(obj[slot||'Slot']);
-  return {
+  return fixModType({
     Slot      : oSlot.Slot,
     Size      : oSlot.Size || '',
-    Type      : obj[item+'_Localised'],
+    Type      : obj[item+'_Localised'] || '',
+    ModType   : oItem.Type,
     ModSize   : oItem.Size,
     ModClass  : oItem.Class,
     Enh       : getEnh(obj.EngineerModifications).Enh
-  };
+  });
 }
-
 
 
 
@@ -400,13 +423,15 @@ function readFile(file) {
     if(line.match(/"event":"ModuleRetrieve"/i)) {
       var obj     = getObj(line, 0);
       var newmod  = getNewModule(obj, 'RetrievedItem');   // This call creates a new Module object out of the "RetrievedItem"
-      var stormod = getFromStorage(newmod);               // Go check and see if the module is in Storage.
+      var stormod = moveFromStorage(newmod);              // Go check and see if the module is in Storage.
                                                           // If not, then the Journal missed it.  This call will return newmod if not in Storage.
                                                           // This call also removes the Module from Storage.
 
       if(obj.SwapOutItem) { // First step: Check to see if we're Storing the existing Module
-        if(checkSlotType(ship[newmod.Slot], obj.SwapOutItem_Localised)) {
-          STORAGE.push(ship[newmod.Slot]);
+        var swapmod = getNewModule(obj, 'SwapOutItem');
+        var oldmod  = fixModType(ship[newmod.Slot]);
+        if(checkSlotModType(oldmod, swapmod.ModType)) {
+          STORAGE.push(oldmod);
           writeSlot('Stored', newmod.Slot, ship);
         }
       }
@@ -421,34 +446,34 @@ function readFile(file) {
     if(line.match(/"event":"ModuleSellRemote"/i)) {
       var obj     = getObj(line, 0);
       var newmod  = getNewModule(obj, 'SellItem');    // Create our starting Module, like above
-      var stormod = getFromStorage(newmod);           // Then, check Storage and REMOVE the Module if there.  Done!
-      print('    Stor Rem :  : '+getModClassSizeEnh(stormod)+' : '+stormod.Type);
+      var stormod = moveFromStorage(newmod);          // Then, check Storage and REMOVE the Module if there.  Done!
+      print('    S-Remote :  : '+getModClassSizeEnh(stormod)+' : '+stormod.Type);
     }
 
     else  // Sell a Module
     if(line.match(/"event":"ModuleSell"/i)) {
       var obj     = getObj(line, 0);
+      var newmod  = getNewModule(obj, 'SellItem');    // Create our starting Module, like above
       var slot    = getSlotAndSize(obj.Slot).Slot;    // Go right to the specified Slot, check to make sure it's a match to the event, and Remove it.
-      if(checkSlotType(ship[slot], obj.SellItem_Localised)) {
+      if(checkSlotModType(ship[slot], newmod.ModType)) {
         writeSlot('Sold', slot, ship);
         delete ship[slot];
       }
     }
 
+    else  // Move multiple  Modules to Storage
+    if(line.match(/"event":"MassModuleStore"/i)) {
+      var obj       = getObj(line, 0);
+      for(var i=0; i < obj.Items.length; i++) {
+        moveToStorage(ship, obj.Items[i], 'Name', 'M-Stored');
+      }
+      // WScript.Quit();
+    }
+
     else  // Move a Module to Storage
     if(line.match(/"event":"ModuleStore"/i)) {
       var obj     = getObj(line, 0);
-      var newmod  = getNewModule(obj, 'StoredItem');  // Create our starting Module, like above
-
-      // Since the Journal might Store a Module that we've never seen, save the starting Module into the Ship since the basic info is all there
-      ship[newmod.Slot] = ship[newmod.Slot] || newmod;
-
-      // Then, we can safely store the Module from the Ship.
-      if(checkSlotType(ship[newmod.Slot], obj.StoredItem_Localised)) {
-        STORAGE.push(ship[newmod.Slot]);
-        writeSlot('Stored', newmod.Slot, ship);
-        delete ship[newmod.Slot];
-      }
+      moveToStorage(ship, obj, 'StoredItem', 'Stored');
     }
 
     else  // Swap the Modules in 2 Slots
