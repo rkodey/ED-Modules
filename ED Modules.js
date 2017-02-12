@@ -20,24 +20,27 @@ var SHIP_FILTER = 0
 
 
 
-var FSO       = new ActiveXObject("Scripting.FileSystemObject");
-var OUT       = FSO.CreateTextFile("Ships.html", true);
+var FSO         = new ActiveXObject("Scripting.FileSystemObject");
+var OUT         = FSO.CreateTextFile("Ships.html", true);
+  
+var WSHSHELL    = WScript.CreateObject("WScript.Shell");
+var GAMES       = WSHSHELL.RegRead("HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders\\{4C5C32FF-BB9D-43B0-B5B4-2D72E54EAAA4}");
+var ENV         = WSHSHELL.Environment("PROCESS");
+var APPDATA     = ENV("APPDATA");
+var MATERIALS   = {};
+var SHIPS       = {};
+var ALLSLOTS    = {};
+var MODMAP      = {};
+var STORAGE     = [];
+var CURSHIP     = '';
 
-var WSHSHELL  = WScript.CreateObject("WScript.Shell");
-var GAMES     = WSHSHELL.RegRead("HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders\\{4C5C32FF-BB9D-43B0-B5B4-2D72E54EAAA4}");
-var ENV       = WSHSHELL.Environment("PROCESS");
-var APPDATA   = ENV("APPDATA");
-var MATERIALS = {};
-var SHIPS     = {};
-var ALLSLOTS  = {};
-var MODMAP    = {};
-var STORAGE   = [];
-var CURSHIP   = '';
+var RANGE       = 'FSD Range';
+ALLSLOTS[RANGE] = 1;
 
-var CMDLINE   = 1;
+var CMDLINE     = 1;
 if(WScript.FullName.match(/wscript\.exe/i)) {
   WScript.echo("To see some additional output, run this script at the command line, using cscript.exe.");
-  CMDLINE     = 0;
+  CMDLINE       = 0;
 }
 
 
@@ -86,12 +89,20 @@ var CLASSES = {
 };
 
 var SLOT_FROM_MOD = {
-  Thrusters : 'Engines'
+  Thrusters     : 'Engines'
 }
 
 var TYPES = {
   'Corrosion Resistant Cargo Rack'  : 'Anti-Corrosive Cargo'
  ,'Planetary Vehicle Hangar'        : 'SRV Hangar'
+ ,'HighFrequency'                   : 'Charge Enh'
+ ,'LightWeight'                     : 'Lightweight'
+ ,'HeatSinkLauncher'                : 'Heat Sink'
+ ,'PointDefence'                    : 'Point Defence'
+ ,'LongRange'                       : 'Long Range'
+ ,'Tuned'                           : 'Clean Tuning'
+ ,'Boosted'                         : 'Overcharged'
+                // .replace('HighFrequency',    'Charge')
 }
 
 var reRemoveSort  = /^[yz] /;   // Used to remove the goofy sorting
@@ -133,42 +144,43 @@ function getItemDetails(src) {
 }
 
 function getSlotAndSize(src) {
-  var aParts    = src ? src.split('_') : ['',''];
-  var slot      = aParts[0];
+  var aParts  = src ? src.split('_') : ['',''];
+  var slot    = aParts[0];
 
   // Use a bunch of replace statements becuase some have numbers
   // Also forces some goofy sorting by adding prefix characters
-  slot = slot.replace('Decal',            'z Decal ');
-  slot = slot.replace('PaintJob',         'z PaintJob ');
-  slot = slot.replace('HugeHardpoint',    'y HP Huge ');
-  slot = slot.replace('LargeHardpoint',   'y HP Large ');
-  slot = slot.replace('MediumHardpoint',  'y HP Medium ');
-  slot = slot.replace('TinyHardpoint',    'y HP Tiny ');
-  slot = slot.replace('FrameShiftDrive',  'FSD');
-  slot = slot.replace('Engine',           'Thrusters');
-  slot = slot.replace('MainThrusterss',   'Engines');   // sic
-  slot = slot.replace('PowerDistributor', 'Power Distributor');
-  slot = slot.replace('PowerPlant',       'Power Plant');
-  slot = slot.replace('ShieldGenerator',  'Shield Generator');
-  slot = slot.replace('ShieldBooster',    'Shield Booster');
-  aParts[0]     = slot;
-  var obj       = { Slot:aParts[0], Size:aParts[1] };
+  slot        = slot
+                .replace('Decal',            'z Decal ')
+                .replace('PaintJob',         'z PaintJob ')
+                .replace('HugeHardpoint',    'y HP Huge ')
+                .replace('LargeHardpoint',   'y HP Large ')
+                .replace('MediumHardpoint',  'y HP Medium ')
+                .replace('TinyHardpoint',    'y HP Tiny ')
+                .replace('FrameShiftDrive',  'FSD')
+                .replace('Engine',           'Thrusters')
+                .replace('MainThrusterss',   'Engines') // sic
+                .replace('PowerDistributor', 'Power Distributor')
+                .replace('PowerPlant',       'Power Plant')
+                .replace('ShieldGenerator',  'Shield Generator')
+                .replace('ShieldBooster',    'Shield Booster')
+  aParts[0]   = slot;
+  var obj     = { Slot:aParts[0], Size:aParts[1] };
   return obj;
 }
 
 function getEnh(enh) {
   var obj     = getSlotAndSize(enh);
   enh         = obj.Slot;
-  enh         = enh.replace('HighFrequency',  'Charge');
-  obj.Slot    = enh;
-  obj         = { Mod:obj.Slot, Enh:obj.Size };
+  obj.Slot    = TYPES[enh] || enh;
+  obj         = { Mod : obj.Slot, Enh : TYPES[obj.Size] || obj.Size };
+  // dump(obj, enh);
   return obj;
 }
 
 function getModClassSizeEnh(obj) {
   var ModClass  = CLASSES[obj.ModClass] || obj.ModClass || '';
   var ModSize   = SIZES[obj.ModSize]    || obj.ModSize  || '';
-  var enh       = (obj.Enh ? ' '+(obj.Enh||'')+' '+(obj.EnhLevel?'L'+obj.EnhLevel:'') : '');
+  var enh       = (obj.Enh ? ' '+(obj.Enh||'')+' '+(obj.EnhLevel?'G'+obj.EnhLevel:'') : '');
   return ModClass + ModSize + enh;
 }
 
@@ -225,7 +237,7 @@ function writeSlot(label, slot, oShip, file) {
               );
   }
   else {
-    if(file) file.WriteLine('<td class="'+tdclass+'"></td>');
+    if(file && label != 'Storage') file.WriteLine('<td class="'+tdclass+'"></td>');
   }
 }
 
@@ -240,7 +252,7 @@ function writeShips() {
       OUT.WriteLine('<th class="'+(head==CURSHIP?'current-th':'')+'">'+head+'</th>');
     }
   }
-  OUT.WriteLine('<th>Storage</th></tr>');
+  OUT.WriteLine('<th style="border:0;">&nbsp;</th><th class="current-th">Storage</th></tr>');
 
   // Then, loop through ALLSLOTS - which is a dynamic/cumulative list of all the slot names your ships carry.  These will be the rows in the HTML.
   var nStore  = 0;
@@ -260,6 +272,7 @@ function writeShips() {
 
     // Now, write the pseudo-ship called Storage
     // NOTE: Storage is simply an Array.  It does not track slot names like ships do.  So, we simply use a counter.
+    OUT.WriteLine('<td style="border:0;"></td>');
     writeSlot('Storage', nStore++, STORAGE, OUT);
     OUT.WriteLine("</tr>");
   }
@@ -305,6 +318,20 @@ function moveFromStorage(newmod) {
   return newmod;
 }
 
+function getNewModule(obj, item, slot) {
+  var oItem   = getItemDetails(obj[item]);
+  var oSlot   = getSlotAndSize(obj[slot||'Slot']);
+  return fixModType({
+    Slot      : oSlot.Slot,
+    Size      : oSlot.Size || '',
+    Type      : obj[item+'_Localised'] || '',
+    ModType   : oItem.Type,
+    ModSize   : oItem.Size,
+    ModClass  : oItem.Class,
+    Enh       : getEnh(obj.EngineerModifications).Enh
+  });
+}
+
 function moveToStorage(ship, obj, name, label) {
   var newmod  = getNewModule(obj, name);  // Create our starting Module, like above
 
@@ -321,22 +348,8 @@ function moveToStorage(ship, obj, name, label) {
 
 function getObj(line, flag) {
   var obj = eval('('+line+')');
-  if(flag || line.match(/xxxdebug/i)) dump(obj, obj.event);  // debugging
+  if(flag || line.match(/xxhighfrequencyxx/i)) dump(obj, obj.event);  // debugging
   return obj;
-}
-
-function getNewModule(obj, item, slot) {
-  var oItem   = getItemDetails(obj[item]);
-  var oSlot   = getSlotAndSize(obj[slot||'Slot']);
-  return fixModType({
-    Slot      : oSlot.Slot,
-    Size      : oSlot.Size || '',
-    Type      : obj[item+'_Localised'] || '',
-    ModType   : oItem.Type,
-    ModSize   : oItem.Size,
-    ModClass  : oItem.Class,
-    Enh       : getEnh(obj.EngineerModifications).Enh
-  });
 }
 
 
@@ -493,6 +506,23 @@ function readFile(file) {
     else  // For debugging - dump Module events not matched above (for future support of new events)
     if(line.match(/"event":"(Module)/i)) {
       // var obj = getObj(line, 1);
+    }
+
+    else
+    if(line.match(/"event":"(FSDJump)/i)) {
+      // var obj   = getObj(line, 0);
+      // if(ship[RANGE]) {
+        // if(obj.JumpDist > ship[RANGE].Enh) ship[RANGE].Enh = obj.JumpDist;
+      // }
+      // else {
+        // ship[RANGE] = {
+          // Slot      : 'Jump'
+         // ,Size      : ''
+         // ,Type      : 'Estimate'
+         // ,Enh       : obj.JumpDist
+        // };
+      // }
+
     }
 
     // else
